@@ -12,6 +12,8 @@ using Unity.Services.Relay.Models;
 using System.Threading.Tasks;
 using System;
 using UnityEngine.SceneManagement;
+using TMPro;
+using Unity.Multiplayer.Samples.Utilities;
 
 #if UNITY_EDITOR
 using ParrelSync;
@@ -20,7 +22,11 @@ using ParrelSync;
 namespace NetcodeTesting {
     public class Matchmaking : MonoBehaviour {
         [SerializeField]
+        private GameObject[] joinOrCreateButtons;
+        [SerializeField]
         private GameObject startGameButton;
+        [SerializeField]
+        private GameObject playersInLobby;
 
         private Lobby connectedLobby;
         private QueryResponse lobbies;
@@ -33,13 +39,45 @@ namespace NetcodeTesting {
         public async void CreateOrJoinLobby() {
             await Authenticate();
 
-            connectedLobby = await QuickJoinLobby() ?? await CreateLobby();
+            connectedLobby = await CreateLobby();
 
             if (connectedLobby != null) {
-                startGameButton.SetActive(false);
+                foreach (GameObject go in joinOrCreateButtons) {
+                    go.SetActive(false);
+                }
 
-                NetworkManager.Singleton.SceneManager.LoadScene("SampleScene", LoadSceneMode.Single);
+                startGameButton.SetActive(true);
+                playersInLobby.SetActive(true);
+                playersInLobby.GetComponentInChildren<TMP_Text>().text = "Players: " + connectedLobby.Players.Count;
+
+                //NetworkManager.Singleton.SceneManager.LoadScene("SampleScene", LoadSceneMode.Single);
             }
+        }
+
+        public async void JoinLobby() {
+            await Authenticate();
+
+            connectedLobby = await QuickJoinLobby();
+
+            if (connectedLobby != null) {
+                foreach(GameObject go in joinOrCreateButtons) {
+                    go.SetActive(false);
+                }
+
+                playersInLobby.SetActive(true);
+                playersInLobby.GetComponentInChildren<TMP_Text>().text = "Players: " + connectedLobby.Players.Count;
+
+                //NetworkManager.Singleton.SceneManager.LoadScene("SampleScene", LoadSceneMode.Single);
+            }
+        }
+
+        public void StartLobby() {
+            NetworkManager.Singleton.SceneManager.LoadScene("SampleScene", LoadSceneMode.Single);
+        }
+
+        IEnumerator LobbyPlayers() {
+            Debug.LogError(connectedLobby.Players.Count);
+            yield return new WaitForSeconds(5);
         }
 
         private async Task Authenticate() {
@@ -56,8 +94,16 @@ namespace NetcodeTesting {
 
         private async Task<Lobby> QuickJoinLobby() {
             try {
-                Debug.LogError(Lobbies.Instance.QuickJoinLobbyAsync());
-                Lobby lobby = await Lobbies.Instance.QuickJoinLobbyAsync();
+                QuickJoinLobbyOptions options = new QuickJoinLobbyOptions();
+
+                options.Filter = new List<QueryFilter>() {
+                    new QueryFilter(
+                        field: QueryFilter.FieldOptions.MaxPlayers,
+                        op: QueryFilter.OpOptions.GE,
+                        value: "10")
+                };
+
+                Lobby lobby = await Lobbies.Instance.QuickJoinLobbyAsync(options);
 
                 var a = await RelayService.Instance.JoinAllocationAsync(lobby.Data[joinCodeKey].Value);
 
@@ -65,9 +111,12 @@ namespace NetcodeTesting {
 
                 NetworkManager.Singleton.StartClient();
                 return lobby;
-            }
-            catch (Exception e) {
-                Debug.Log("No lobbies available");
+            } catch (Exception e) {
+                if (ClonesManager.IsClone()) {
+                    await QuickJoinLobby();
+                }
+
+                Debug.Log("No lobbies available " + e);
                 return null;
             }
         }
@@ -90,10 +139,10 @@ namespace NetcodeTesting {
                 transport.SetHostRelayData(a.RelayServer.IpV4, (ushort)a.RelayServer.Port, a.AllocationIdBytes, a.Key, a.ConnectionData);
 
                 NetworkManager.Singleton.StartHost();
+                Debug.LogError("Started hosting " + lobby.Name);
                 return lobby;
-            }
-            catch (Exception e) {
-                Debug.Log("Failed creating a lobby");
+            } catch (Exception e) {
+                Debug.Log(e);
                 return null;
             }
         }
@@ -113,12 +162,11 @@ namespace NetcodeTesting {
         private void OnDestroy() {
             try {
                 StopAllCoroutines();
-                if(connectedLobby != null) {
+                if (connectedLobby != null) {
                     if (connectedLobby.HostId == playerID) { Lobbies.Instance.DeleteLobbyAsync(connectedLobby.Id); }
                     else { Lobbies.Instance.RemovePlayerAsync(connectedLobby.Id, playerID); }
                 }
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 Debug.Log($"Error shuting dow lobby: {e}");
             }
         }

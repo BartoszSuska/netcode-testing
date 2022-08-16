@@ -188,7 +188,7 @@
     },
     "com.unity.services.lobby": {
       "version": "1.0.1",
-      "depth": 1,
+      "depth": 0,
       "source": "registry",
       "dependencies": {
         "com.unity.services.core": "1.4.0",
