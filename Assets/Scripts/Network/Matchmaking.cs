@@ -112,9 +112,11 @@ namespace NetcodeTesting {
                 NetworkManager.Singleton.StartClient();
                 return lobby;
             } catch (Exception e) {
+#if UNITY_EDITOR
                 if (ClonesManager.IsClone()) {
                     await QuickJoinLobby();
                 }
+#endif
 
                 Debug.Log("No lobbies available " + e);
                 return null;
